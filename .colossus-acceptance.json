@@ -1,0 +1,13 @@
+{
+  "ready_testid": "app-ready",
+  "expect_text": [
+    "brand strategy that earns the room before you enter it",
+    "intelligence-led brand strategy",
+    "four disciplines, one defensible brand"
+  ],
+  "reject_signatures": [
+    "home-title\">Users<",
+    "Site is being prepared",
+    "Loading..."
+  ]
+}
