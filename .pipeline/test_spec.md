@@ -1,190 +1,239 @@
 # Test Specification
 
-> **Warning — `surface.json` not found.** `.pipeline/surface.json` was absent at generation
-> time. The API surface below was derived from the `## Surface contract` section of
-> `.pipeline/tasks.md` (authoritative task decomposition) cross-checked against `requirements`
-> in the spec. If `surface.json` is later produced, reconcile this file against it.
+> ⚠️ **WARNING — `.pipeline/surface.json` was not found.** The API/route surface
+> below is derived from `requirements/spec.md` and `.pipeline/tasks.md` (its
+> "Surface contract" section). Endpoint totals are therefore best-effort, not
+> authoritative. If `surface.json` is later produced, reconcile this file against it.
 >
-> **Auth-model note.** The spec `## Assumptions` declares `admin_only`, while `tasks.md`
-> builds the pipeline-mandated `full_auth` (public `/login` + `/signup`, first signup → ADMIN).
-> Both surfaces are covered here; the `/api/auth/*` and `/login`/`/signup` cases apply only if
-> `full_auth` ships. Tests for those routes should be skipped (not failed) if the build ships
-> `admin_only`.
+> ⚠️ **Auth-model note.** The spec's `## Assumptions` resolves the platform to
+> **admin_only** (no public signup/login, all marketing routes unguarded). The
+> upstream `tasks.md` carries a `full_auth` variant (`/login`, `/signup`,
+> `POST /api/auth/*`) flagged as an open question. This test spec follows the
+> **spec (admin_only)** as the source of truth; the full_auth user-auth endpoints
+> are listed under **Out of scope** pending confirmation.
 
 ## Coverage summary
 - Total cases: 96
-- API endpoints covered: 15 / 15 (from tasks.md surface contract; surface.json missing)
-- User journeys covered: 12
+- API endpoints covered: 23 / 23 (derived; surface.json missing)
+- User journeys covered: 11
 
 ## API tests
 
-### `POST /api/consultation`
-- **Happy path**: valid step-1 (`fullName`, `organization`, `email`, `phone`, `serviceInterest`) + step-2 (`challengeCategories` ≥1, `situationDescription`) → `200/201`; body contains a non-empty `briefToken` (UUID/nanoid shape); a `Lead` row is persisted with `briefStatus="pending"`, `leadStatus` default, captured `ip`; an admin notification email is sent OR enqueued to `EmailOutbox`.
-- **Validation failures**: missing `email` → `400`; malformed `email` (`"not-an-email"`) → `400`; empty `challengeCategories` (`[]`) → `400` (schema requires ≥1); missing `fullName` → `400`. Response lists field-level errors; no `Lead` row written.
-- **Auth failures**: n/a (public endpoint).
-- **Idempotency / edge cases**: 6th POST from same IP within 60 min → `429` with rate-limit message (limit 5/60min/IP); free-text fields containing `<script>`/HTML/SQL payloads are DOMPurify-sanitized before persistence (stored value has no executable markup); SMTP transport failure still returns success, persists `Lead`, and enqueues an `EmailOutbox` row with `status` pending.
-
-### `POST /api/brief/[token]`
-- **Happy path**: valid `pending` token + complete brief body (`mission`, `vision`, `differentiator`, `brandStory`, `audiences`, `brandVoice`, `successDefinition`) → `200`; `BrandBrief` persisted linked to the Lead; Lead `briefStatus="completed"`; `completedAt` set.
-- **Validation failures**: valid token but missing required brief fields → `400` with field errors; no `BrandBrief` written; status stays `pending`.
-- **Auth failures**: n/a (token-scoped public endpoint).
-- **Idempotency / edge cases**: unknown/garbage token → `404`; already-`completed` (superseded) token → `404`; free-text brief fields sanitized before persistence; abandoning (never POSTing) leaves `briefStatus="pending"`.
+Endpoints derived from the spec + `tasks.md` surface contract (admin_only model).
+All `/api/*` responses are JSON; `/sitemap.xml` and `/robots.txt` are XML/plaintext
+and are served WITHOUT the `/api` prefix (proxied by nginx).
 
 ### `POST /api/admin/login`
-- **Happy path**: correct seeded admin `email` + `password` → `200`; httpOnly signed JWT session cookie set; `LoginAttempt` row with `success=true`.
-- **Validation failures**: missing `email` or `password` → `400`.
-- **Auth failures**: wrong password → `401` with generic message `"Invalid email or password"` (no user-enumeration); unknown email → `401` same generic message; `LoginAttempt` with `success=false` recorded.
-- **Idempotency / edge cases**: ≥10 failed attempts for same email within 15 min → `429` account-lock response + password-reset email dispatched/enqueued; further attempts during lock window → `429`.
+- **Happy path**: `{ email: <seeded ADMIN_EMAIL>, password: <ADMIN_PASSWORD> }` → `200`, sets httpOnly signed session cookie (`Set-Cookie` present, `HttpOnly`, `SameSite`), body confirms authenticated admin (no password/hash echoed).
+- **Validation failures**: missing `email` or `password`, malformed email → `400` from ValidationPipe.
+- **Auth failures**: wrong password or unknown email → `401` with the **generic** message `"Invalid email or password"` (no user-enumeration difference between the two cases).
+- **Idempotency / edge cases**: brute-force lock — after ≥10 failed attempts for the same email within 15 min → `429`; a password-reset email is queued to `EmailOutbox`; subsequent valid credentials within the window still return `429` until the window elapses.
 
 ### `POST /api/admin/logout`
-- **Happy path**: authenticated request → `200`; session cookie cleared/expired.
-- **Validation failures**: n/a.
-- **Auth failures**: no session cookie → still returns `200`/`204` (idempotent clear) or `401` per implementation; must not leave a valid session.
-- **Idempotency / edge cases**: double logout is safe (no error).
+- **Happy path**: with a valid admin session cookie → `200`, clears/expires the session cookie (`Set-Cookie` with past expiry or empty value).
+- **Validation failures**: n/a (no body).
+- **Auth failures**: no session cookie → returns `200`/`204` idempotently (logout is safe to call unauthenticated); assert it does NOT `500`.
+- **Idempotency / edge cases**: calling logout twice leaves the client with no session cookie.
 
-### `PATCH /api/admin/leads/[id]`
-- **Happy path**: authenticated admin updates `leadStatus` → `200`; change persisted. Add `LeadNote` → note stored with author + timestamp. Edit a brief field → `BrandBrief` updated; original value written to `BrandBriefAudit` with `adminId`, `field`, `oldValue`, `newValue`, `editedAt`.
-- **Validation failures**: invalid `leadStatus` enum value → `400`; unknown lead `id` → `404`.
-- **Auth failures**: unauthenticated → `401`; authenticated non-admin (USER role) → `403`.
-- **Idempotency / edge cases**: editing a brief field to the same value writes no misleading audit / or writes a no-op audit consistently; concurrent edits keep audit trail append-only.
+### `POST /api/consultation`
+- **Happy path**: valid DTO `{ name, organization, email (valid format), serviceInterest, challenges: [≥1 category], situation }` → `201/200` with body `{ briefToken: <non-empty unique string> }`; a `Lead` row is persisted with a unique crypto-random `briefToken`; admin notification email dispatched off the critical path.
+- **Validation failures**: missing any required field (`name`/`organization`/`email`/`serviceInterest`/`situation`) → `400`; malformed `email` → `400`; empty `challenges` array (0 categories) → `400`; extra/unknown fields stripped by whitelist.
+- **Auth failures**: n/a (public endpoint).
+- **Idempotency / edge cases**:
+  - **Rate limit** — 6th request from the same IP within 60 min → `429`.
+  - **Sanitization** — `situation`/free-text containing `<script>alert(1)</script>` or SQLi payload (`'; DROP TABLE ...`) is neutralized/stripped before persistence (stored value contains no active markup).
+  - **SMTP down** — Lead still persisted, response still `{ briefToken }`, email enqueued to `EmailOutbox` (no 5xx).
+  - **Performance** — single-write path; p95 latency < 1000ms (email async).
+
+### `GET /api/brief/:token`
+- **Happy path**: valid `briefToken` → `200` with `{ lead, brief }` data needed to render the brand-brief form.
+- **Validation failures**: n/a (token is a path param).
+- **Auth failures**: n/a (public, token-scoped).
+- **Idempotency / edge cases**: unknown token → `404`; superseded token → `404` (drives `/brief/invalid` UX).
+
+### `POST /api/brief/:token`
+- **Happy path**: valid token + valid brief body → `200/201`; persists `BrandBrief`, sets `briefStatus=COMPLETED` and `completedAt` timestamp.
+- **Validation failures**: missing required brief fields → `400`; free-text sanitized before persistence.
+- **Auth failures**: n/a (token-scoped).
+- **Idempotency / edge cases**: unknown/superseded token → `404`; re-submitting a completed brief behaves deterministically (either updates or rejects — assert no duplicate BrandBrief rows / no 500).
+
+### `GET /api/admin/leads`
+- **Happy path**: authenticated admin → `200` with paginated list `{ items: [...], total, page }`.
+- **Validation failures**: invalid `sort` / `page` values → `400` or safe default (assert no 500).
+- **Auth failures**: no session → `401`; non-ADMIN session → `403`.
+- **Idempotency / edge cases**: `?status=`, `?challenge=`, `?sort=`, `?page=` filters return correctly narrowed/ordered/paginated result sets; empty result set returns `200` with `items: []`.
+
+### `GET /api/admin/leads/:id`
+- **Happy path**: authenticated admin, existing id → `200` with lead + brief + notes.
+- **Validation failures**: non-numeric/malformed id → `400`.
+- **Auth failures**: no session → `401`; non-ADMIN → `403`.
+- **Idempotency / edge cases**: unknown id → `404`.
+
+### `PATCH /api/admin/leads/:id`
+- **Happy path**: authenticated admin updates `leadStatus` → `200`, persisted; adding a note creates a `LeadNote`; editing a brief field writes a `BrandBriefAudit` row with `adminId` + timestamp and preserves the original value.
+- **Validation failures**: invalid `leadStatus` enum value → `400`; free-text note sanitized.
+- **Auth failures**: no session → `401`; non-ADMIN → `403`.
+- **Idempotency / edge cases**: unknown id → `404`; a brief-field edit records the actual before→after in the audit (no misleading audit on a no-op change).
+
+### `GET /api/insights`
+- **Happy path**: public → `200` with list of PUBLISHED posts only (drafts excluded).
+- **Validation failures**: invalid pagination param → safe default / `400`.
+- **Auth failures**: n/a (public).
+- **Idempotency / edge cases**: pagination honored; unpublished/draft posts never appear.
+
+### `GET /api/insights/:slug`
+- **Happy path**: published slug → `200` with full article body + metadata for Article JSON-LD.
+- **Validation failures**: n/a.
+- **Auth failures**: n/a (public).
+- **Idempotency / edge cases**: unknown slug → `404`; draft (unpublished) slug → `404` for public callers.
 
 ### `POST /api/admin/insights`
-- **Happy path**: authenticated admin posts `title` + `body` (≥1500 words) + `status` → `201`; `InsightsPost` created with unique `slug`, `authorId`, `updatedAt` set.
-- **Validation failures**: body `<1500` words → `400` word-count error; missing `title` → `400`; duplicate `slug` → `409`/`400`.
-- **Auth failures**: unauthenticated → `401`; non-admin USER → `403`.
-- **Idempotency / edge cases**: publishing (`status=published`) sets `publishedAt` and touches `updatedAt` so sitemap `lastmod` advances.
+- **Happy path**: authenticated admin, body ≥1500 words → `201` with created post.
+- **Validation failures**: body `< 1500` words → `400/422` with clear message; missing `slug`/`title` → `400`; duplicate slug → `409`/`400`.
+- **Auth failures**: no session → `401`; non-ADMIN → `403`.
+- **Idempotency / edge cases**: HTML in body sanitized per policy while preserving legitimate content.
 
-### `PATCH /api/admin/insights/[id]`
-- **Happy path**: authenticated admin updates title/body/status → `200`; `updatedAt` refreshed.
-- **Validation failures**: edited body dropping below 1500 words → `400`; unknown `id` → `404`.
-- **Auth failures**: unauthenticated → `401`; non-admin USER → `403`.
-- **Idempotency / edge cases**: transition draft→published sets `publishedAt` once; re-publish does not reset original `publishedAt` unexpectedly; `updatedAt` change reflected in `/sitemap.xml`.
+### `PATCH /api/admin/insights/:id`
+- **Happy path**: authenticated admin edits post; publishing touches `updatedAt` (drives sitemap `lastmod`).
+- **Validation failures**: edit that drops body below 1500 words → `400/422`.
+- **Auth failures**: no session → `401`; non-ADMIN → `403`.
+- **Idempotency / edge cases**: unknown id → `404`; publishing a draft flips status to PUBLISHED and makes it visible on `GET /api/insights`.
+
+### `GET /api/team`
+- **Happy path**: public → `200` with array of TeamMembers.
+- **Validation failures**: n/a.
+- **Auth failures**: n/a (public).
+- **Idempotency / edge cases**: seeded members present; image fields are URL strings (MinIO not wired).
+
+### `GET /api/team/:slug`
+- **Happy path**: valid slug → `200` with member detail (fields for Person JSON-LD).
+- **Auth failures**: n/a (public).
+- **Idempotency / edge cases**: unknown slug → `404`.
+
+### `GET /api/services`
+- **Happy path**: public → `200` with services list (from static `services.ts`).
+- **Auth failures**: n/a (public).
+- **Idempotency / edge cases**: each service exposes ≥3 associated FAQs (cross-check with `/api/faqs`).
+
+### `GET /api/faqs`
+- **Happy path**: public → `200` with ≥15 Q&A entries total.
+- **Auth failures**: n/a (public).
+- **Idempotency / edge cases**: ≥3 Q&A per service; optional category grouping supports `/faq?category=` UI.
 
 ### `GET /api/admin/settings`
-- **Happy path**: authenticated admin → `200`; lists service keys (postgresql, minio) + integration env keys (Cal.com, SMTP, PostgreSQL) with **masked** values and per-key `configured` boolean.
+- **Happy path**: authenticated admin → `200` with entries for postgresql, minio, and integration keys (`CAL_COM_EMBED_API_KEY`, `SMTP_VIA_NODEMAILER_API_KEY`, `POSTGRESQL_API_KEY`, `MINIO_API_KEY`), each with a **masked** value and a `configured` boolean flag.
 - **Validation failures**: n/a.
-- **Auth failures**: unauthenticated → `401`; non-admin USER → `403`.
-- **Idempotency / edge cases**: secret values never returned in cleartext (masked); unconfigured/placeholder keys report `configured=false`.
+- **Auth failures**: no session → `401`; non-ADMIN → `403`.
+- **Idempotency / edge cases**: secrets are never returned in cleartext; unset keys report `configured: false`.
 
 ### `PATCH /api/admin/settings`
-- **Happy path**: authenticated admin upserts one or more `key`/`value` pairs → `200`; `SystemSetting` rows upserted; subsequent `GET` shows `configured=true` for those keys.
-- **Validation failures**: unknown/disallowed setting key → `400`; malformed body → `400`.
-- **Auth failures**: unauthenticated → `401`; non-admin USER → `403`.
-- **Idempotency / edge cases**: re-submitting same key overwrites value (upsert, not duplicate); masked values are not echoed back on write.
-
-### `POST /api/auth/signup` *(full_auth only)*
-- **Happy path**: first-ever signup (`email`, `password`) → `201`; created User has `role=ADMIN`; session cookie set. Second distinct signup → User `role=USER`.
-- **Validation failures**: malformed email → `400`; weak/missing password → `400`; duplicate email → `409`/`400`.
-- **Auth failures**: n/a (public).
-- **Idempotency / edge cases**: password stored bcrypt-hashed (never plaintext); role assignment based on existing user count is race-safe (only one ADMIN from empty DB).
-
-### `POST /api/auth/login` *(full_auth only)*
-- **Happy path**: valid credentials → `200`; session cookie set.
-- **Validation failures**: missing fields → `400`.
-- **Auth failures**: wrong password / unknown email → `401` generic message.
-- **Idempotency / edge cases**: session cookie is httpOnly + signed.
-
-### `POST /api/auth/logout` *(full_auth only)*
-- **Happy path**: authenticated → `200`; cookie cleared.
-- **Validation failures**: n/a.
-- **Auth failures**: no session → idempotent `200`/`204`.
-- **Idempotency / edge cases**: repeat logout safe.
-
-### `GET /api/health`
-- **Happy path**: always → `200` with liveness payload (e.g. `{ status: "ok" }`), no DB dependency.
-- **Validation failures**: n/a.
-- **Auth failures**: n/a (public, unguarded).
-- **Idempotency / edge cases**: responds quickly even when DB is down (liveness only).
-
-### `GET /api/health/deep`
-- **Happy path**: DB reachable → `200` with DB-check payload.
-- **Validation failures**: n/a.
-- **Auth failures**: n/a.
-- **Idempotency / edge cases**: DB unreachable → `503` with failure detail (not a `200`).
+- **Happy path**: authenticated admin upserts a `SystemSetting` → `200`; the corresponding key's `configured` flag flips to `true` on the next `GET`.
+- **Validation failures**: unknown/unsupported key → `400`; empty value handling defined (assert no 500).
+- **Auth failures**: no session → `401`; non-ADMIN → `403`.
+- **Idempotency / edge cases**: `resolveConfig(key)` precedence — env var wins; `PLACEHOLDER_CONFIGURE_IN_SETTINGS` or absent env falls back to the DB `SystemSetting`; null when neither set.
 
 ### `POST /api/cron/email-retry`
-- **Happy path**: request with correct scheduler secret → `200`; drains pending `EmailOutbox` rows, increments `attempts`, marks `sent` on success.
+- **Happy path**: request with the correct cron secret → `200`; drains `EmailOutbox` (pending emails attempted; sent ones marked, failures re-queued with incremented attempt count + backoff).
 - **Validation failures**: n/a.
-- **Auth failures**: missing/incorrect secret → `401`/`403`; no outbox rows touched.
-- **Idempotency / edge cases**: rows past attempt cap are skipped/parked (not retried forever); backoff respected (recently-failed rows not immediately retried); empty outbox → `200` no-op.
+- **Auth failures**: missing/incorrect secret → `401/403`.
+- **Idempotency / edge cases**: entries exceeding the attempt cap are not retried indefinitely; running with an empty outbox returns `200` (no-op).
+
+### `GET /sitemap.xml`
+- **Happy path**: → `200`, `Content-Type` XML; includes static pages + every PUBLISHED insights post with `<lastmod>` reflecting `updatedAt`, plus `changefreq`/canonical URLs.
+- **Auth failures**: n/a (public, unprefixed).
+- **Idempotency / edge cases**: publishing/updating a post updates its `lastmod`; drafts are excluded.
+
+### `GET /robots.txt`
+- **Happy path**: → `200`, plaintext; `Allow: /`, `Disallow: /admin`, and a `Sitemap:` reference to `/sitemap.xml`.
+- **Auth failures**: n/a (public, unprefixed).
+- **Idempotency / edge cases**: served without the `/api` prefix (nginx proxy path).
+
+### `GET /api/health`
+- **Happy path**: → `200` with liveness payload (no DB dependency).
+- **Idempotency / edge cases**: excluded from the `/api` prefix rewrite per config, still reachable at `/api/health`.
+
+### `GET /api/health/deep`
+- **Happy path**: DB reachable → `200` with DB ping success.
+- **Idempotency / edge cases**: DB unreachable → `503` (readiness fails cleanly, not a 500 stack trace).
 
 ## UI / journey tests
 
-### Journey: Consultation lead-capture funnel
-- **Steps**: Navigate `/consult` (distraction-free layout, no global nav) → fill step 1 → Continue → URL reflects `?step=2` → fill step 2 (select ≥1 challenge category, situation text) → Submit.
-- **Expected outcomes**: redirect to `/consult/confirmation`; thank-you message + Brand Brief invite link + Cal.com calendar embed rendered; `Lead` persisted with issued `briefToken`; `?step=` is addressable/restorable on reload.
-- **Negative path**: submitting step with missing/invalid fields shows inline `react-hook-form` errors and does not advance; after exceeding 5 submissions/60min the form surfaces a `429` rate-limit message.
+Playwright with the `angular_testability` wait strategy; every assertion should wait
+on the `data-testid="app-ready"` sentinel before interacting.
 
-### Journey: Brand Intelligence Brief completion
-- **Steps**: Open `/brief/[token]` with a valid pending token → fill all brief fields → Submit.
-- **Expected outcomes**: routed to `/brief/[token]/complete` completion page; `BrandBrief` persisted; Lead `briefStatus="completed"`.
-- **Negative path**: `/brief/<invalid-or-superseded-token>` renders `404` with a contact message; abandoning the form (leaving without submit) leaves `briefStatus="pending"`; empty required fields show inline errors.
+### Journey: Public browsing & SEO
+- **Steps**: Visit `/` → `/services` → open a `/services/:slug` → `/about` → `/team/:slug` → `/faq?category=<cat>` → `/insights?page=1` → open an `/insights/:slug`.
+- **Expected outcomes**: Home renders hero, services overview, philosophy, social proof, trust logos, and a testimonial adjacent to the CTA. Each route sets a unique `<title>`/meta and injects a matching `<script type="application/ld+json">` into `<head>`: Organization (home), Service+OfferCatalog (service detail), Person (team detail), FAQPage (faq), Article (insight detail), plus BreadcrumbList where breadcrumbs render. FAQ `?category=` filters visible Q&A; deep-linking each URL (path-based routing + nginx fallback) loads the correct state directly.
+- **Negative path**: unknown `:slug` on service/team/insight → not-found UX (no blank page / no console crash).
 
-### Journey: Admin authentication
-- **Steps**: Visit `/admin/login` → enter seeded admin credentials → Submit.
-- **Expected outcomes**: redirected to `/admin` dashboard; session cookie present.
-- **Negative path**: wrong credentials show generic `"Invalid email or password"`; 10+ failures within 15 min shows lockout message and triggers password-reset email; visiting `/admin` or `/admin/leads` while unauthenticated redirects to `/admin/login` (401 semantics).
+### Journey: Consultation submission (happy path)
+- **Steps**: Visit `/consult` (distraction-free layout, NO global nav) → fill step 1 → advance (`?step=2`) → fill step 2 (select ≥1 challenge) → submit.
+- **Expected outcomes**: Reactive form advances between steps; `?step=` restores position on reload; on submit the app POSTs `/api/consultation`, receives `{ briefToken }`, and navigates to `/consult-confirmation?token=<briefToken>` showing thank-you + brief invite + Cal.com `CalendarEmbed`.
+- **Negative path**: inline validation on empty required fields, invalid email format, and 0 challenges selected (submit blocked with inline errors); a `429` from the API surfaces the rate-limit message rather than a generic failure.
 
-### Journey: Full-auth public signup/login/logout *(full_auth only)*
-- **Steps**: Visit `/signup` → register first user → observe ADMIN access → logout → register second user at `/signup` → observe USER access → login/logout via `/login`.
-- **Expected outcomes**: first user reaches admin surfaces; second (USER) user is denied admin surfaces (`403`); login/logout toggle session state and redirects.
-- **Negative path**: duplicate email at `/signup` shows error; invalid login shows generic error; a logged-in USER navigating to `/admin/*` gets `403` (not the admin UI).
+### Journey: Brand brief completion
+- **Steps**: Navigate to `/brief/:token` (valid) → fill BrandBriefForm → submit → land on `/brief/:token/complete`.
+- **Expected outcomes**: Form pre-loads lead/brief context from `GET /api/brief/:token`; submit POSTs and shows completion page; `briefStatus=COMPLETED` persisted.
+- **Negative path**: **abandon** — leaving without submitting persists no BrandBrief. **Invalid** — unknown/superseded token → app routes to `/brief/invalid` (404 UX) on the `GET` 404.
 
-### Journey: Admin lead triage (CRM)
-- **Steps**: As admin open `/admin/leads` → apply filters/sort via `?status=&challenge=&sort=&page=` → open a lead at `/admin/leads/[id]` → change status, add a note, edit a brief field → Save.
-- **Expected outcomes**: list filters/sorts and paginates in sync with URL query params; lead detail shows all brief fields + contact + service interest; status/note/brief edits persist; brief-field edit writes original to `BrandBriefAudit` with admin identity + timestamp.
-- **Negative path**: unauthenticated access to `/admin/leads` → redirect/401; USER role → 403; invalid status value rejected.
+### Journey: Admin login (happy / invalid / lockout)
+- **Steps**: Visit `/admin/login` → enter credentials → submit.
+- **Expected outcomes**: valid admin creds → session cookie set, redirect to `/admin` dashboard.
+- **Negative path**: wrong creds → generic "Invalid email or password" shown (no enumeration); ≥10 failures in 15 min → `429` lockout message shown and a reset email queued (verify via outbox/DB).
 
-### Journey: Insights CMS publish → public + SEO
-- **Steps**: As admin open `/admin/insights/new` → enter title + ≥1500-word body → set status published → Save → visit public `/insights` and `/insights/[slug]`.
-- **Expected outcomes**: post appears in public `/insights` list and detail; detail page renders Article JSON-LD; `/sitemap.xml` includes the post URL with an updated `lastmod`.
-- **Negative path**: saving a body `<1500` words shows word-count validation error and blocks publish; non-admin cannot reach `/admin/insights/*`.
+### Journey: Admin route protection
+- **Steps**: As an unauthenticated client, request `/admin`, `/admin/leads`, `/admin/settings`.
+- **Expected outcomes**: unauth access → guard triggers 401 semantics → redirect to `/admin/login`. A non-ADMIN session (if one exists) → 403 handling (blocked from admin area).
+- **Negative path**: directly deep-linking an admin URL while unauthenticated never renders admin data before redirect.
 
-### Journey: Admin settings credential configuration
-- **Steps**: As admin open `/admin/settings` → view services (postgresql, minio) + integrations (Cal.com, SMTP, PostgreSQL) with configured/unconfigured badges and the "needs credentials" banner → enter a credential value → Save.
-- **Expected outcomes**: value upserted via `PATCH /api/admin/settings`; badge flips to configured; placeholder banner updates to reflect newly-configured integration.
-- **Negative path**: unauthenticated/USER access blocked (401/403); stored secrets displayed masked, never in cleartext.
+### Journey: Lead triage (filter / sort / audit)
+- **Steps**: Logged-in admin opens `/admin/leads?status=&challenge=&sort=&page=` → applies filters/sort/pagination → opens `/admin/leads/:id` → changes `leadStatus` → adds a note → edits a brief field.
+- **Expected outcomes**: query-param filters/sort/pagination reflected in the list and URL; status change persists; note appears as a `LeadNote`; brief-field edit creates a `BrandBriefAudit` entry showing adminId, timestamp, and the preserved original value.
+- **Negative path**: invalid filter values degrade gracefully (no crash); unknown lead id → not-found UX.
 
-### Journey: Public marketing browsing + JSON-LD
-- **Steps**: Visit `/` , `/services`, `/services/[slug]`, `/about`, `/team/[slug]`, `/insights/[slug]`.
-- **Expected outcomes**: `/` renders Organization JSON-LD (root layout); `/services/[slug]` renders Service + OfferCatalog + FAQPage JSON-LD and embedded FAQ; `/team/[slug]` renders Person JSON-LD; `/insights/[slug]` renders Article JSON-LD; all sub-pages render BreadcrumbList JSON-LD; each page emits `generateMetadata` title/description. `/services` shows exactly 4 service cards.
-- **Negative path**: unknown `/services/[slug]`, `/team/[slug]`, `/insights/[slug]` → `not-found` (404) page.
+### Journey: Insights publish → public + SEO propagation
+- **Steps**: Admin creates a post at `/admin/insights/new` (≥1500 words) → publishes → visits public `/insights/:slug` → fetches `/sitemap.xml` and `/robots.txt`.
+- **Expected outcomes**: sub-1500-word body blocked with guidance; published post becomes visible on `/insights` and `/insights/:slug`; Article JSON-LD present on the detail page; sitemap includes the post with updated `lastmod`; robots disallows `/admin`.
+- **Negative path**: draft stays invisible publicly and absent from the sitemap until published.
 
-### Journey: FAQ category filtering
-- **Steps**: Visit `/faq` → apply `?category=` filter.
-- **Expected outcomes**: ≥15 Q&A present across categories; filtering by `?category=` narrows the visible set to that category; FAQPage JSON-LD present.
-- **Negative path**: unknown `?category=` value shows empty/all state gracefully (no crash).
+### Journey: Admin settings badge flip
+- **Steps**: Admin opens `/admin/settings` → observes unconfigured badges + the placeholder banner → enters a credential for a service → saves.
+- **Expected outcomes**: banner reads "The following need credentials to activate: Cal.com embed, SMTP via Nodemailer, PostgreSQL, MinIO."; each service/integration shows a configured/unconfigured badge; after PATCH, the saved key's badge flips unconfigured→configured; saved secret displays masked.
+- **Negative path**: saving an empty/invalid value does not falsely flip a badge to configured.
 
-### Journey: Insights pagination
-- **Steps**: Visit `/insights` → navigate pages via `?page=`.
-- **Expected outcomes**: list is paginated; `?page=2` shows the next set; page state reflected in URL.
-- **Negative path**: out-of-range `?page=` shows empty or clamps to a valid page without error.
+### Journey: Cal.com embed graceful degradation
+- **Steps**: Reach `/consult-confirmation?token=` when `CAL_COM_EMBED_API_KEY` is unconfigured.
+- **Expected outcomes**: the `CalendarEmbed` degrades gracefully (503-handled placeholder / friendly message) instead of throwing; the thank-you + brief invite content still renders.
+- **Negative path**: configured key → live Cal.com widget loads.
 
-### Journey: SEO endpoints & robots
-- **Steps**: Request `/sitemap.xml` and `/robots.txt`.
-- **Expected outcomes**: `/sitemap.xml` is valid `MetadataRoute.Sitemap` output listing published posts/pages with `lastmod`; `/robots.txt` allows all, disallows `/admin`, and references the sitemap.
-- **Negative path**: `/admin` paths are excluded from the sitemap.
+### Journey: SMTP-down resilience
+- **Steps**: With SMTP unavailable, submit a consultation → then call `POST /api/cron/email-retry` (correct secret) after SMTP recovers.
+- **Expected outcomes**: consultation still persists the Lead and returns the confirmation `{ briefToken }`; the notification email is queued in `EmailOutbox`; the cron drain sends it and marks it delivered.
+- **Negative path**: outbox entries past the attempt cap are not retried forever.
 
-### Journey: Responsive & Core Web Vitals
-- **Steps**: Load homepage, a service page, and an insights page at mobile (≤768px) and desktop widths; exercise hamburger nav.
-- **Expected outcomes**: hamburger nav appears ≤768px and toggles the mobile menu; single-column reflow; tap targets ≥44px; form fields full-width on mobile. Lighthouse CI: LCP <2500ms, CLS <0.1, INP proxy (TBT) within budget on homepage/service/insights, both mobile and desktop.
-- **Negative path**: layout does not shift beyond CLS 0.1 during font/image load (`next/font` + `next/image` sizing).
+### Journey: Responsive layout
+- **Steps**: Load home/service/insights at ≤768px and at desktop widths.
+- **Expected outcomes**: hamburger `MobileNav` appears ≤768px; layout reflows to a single column; all tap targets ≥44px; no horizontal scroll; images/fonts sized to hold CLS < 0.1.
+- **Negative path**: rotating/resizing does not introduce overflow or overlapping nav.
 
 ## Data integrity tests
-- After `POST /api/consultation`: exactly one `Lead` row with a unique, non-null `briefToken`; `briefStatus="pending"`; `ip` recorded; no unsanitized markup in any free-text column.
-- After `POST /api/brief/[token]`: one `BrandBrief` linked 1:1 to its `Lead`; Lead `briefStatus` transitions `pending → completed` exactly once; `completedAt` non-null.
-- After brief-field edit via `PATCH /api/admin/leads/[id]`: one `BrandBriefAudit` row per changed field capturing `oldValue`/`newValue`/`adminId`/`editedAt`; original never lost.
-- After Insights publish/update: `InsightsPost.updatedAt` monotonically advances; `slug` remains unique; `publishedAt` set once on first publish.
-- Login/rate-limit: `LoginAttempt` and `RateLimitHit` rows accumulate per attempt; lockout/limit computed from a sliding window (old rows outside the window do not count).
-- Email: on SMTP failure an `EmailOutbox` row exists with incrementing `attempts` and `lastError`; `POST /api/cron/email-retry` transitions it to sent and never exceeds the attempt cap.
-- Settings: `SystemSetting` upserts are keyed (one row per key); secrets stored but returned masked.
-- All persistence goes through Prisma parameterized queries (SQL-injection payloads stored as inert data, never executed).
+- A successful `POST /api/consultation` creates exactly one `Lead` with a **unique** non-null `briefToken`; token collisions never occur across concurrent submissions.
+- All persisted free-text (consultation `situation`, brief fields, lead notes) is sanitized — stored values contain no executable `<script>`/HTML and no injected SQL executes.
+- `POST /api/brief/:token` sets `briefStatus=COMPLETED` and a non-null `completedAt`, and does not create duplicate `BrandBrief` rows for one lead.
+- Every admin brief-field edit writes one `BrandBriefAudit` row capturing `adminId`, timestamp, and the original (pre-edit) value; originals are never overwritten in the audit trail.
+- `InsightsPost.updatedAt` advances on publish/edit and is the value emitted as sitemap `<lastmod>`.
+- Rate-limit state (`RateLimitHit`) and login lockout state (`LoginAttempt`) are windowed correctly: counts reset after the window (60 min for consultation IP, 15 min for login email) and do not leak across IPs/emails.
+- `EmailOutbox` rows track attempt count and are capped; a delivered email is marked sent and not re-sent by the retry cron.
+- `SystemSetting` upserts are idempotent per `key` (no duplicate rows); `configured` reflects presence of a real value, not the `PLACEHOLDER_CONFIGURE_IN_SETTINGS` sentinel.
+- `GET /api/insights` and `/sitemap.xml` never expose draft (unpublished) posts.
 
 ## Out of scope
-- **Password-reset completion flow** — lockout dispatches a reset email, but no reset-token/set-new-password route or screen is specified (spec `## Open questions`). Not tested until scoped.
-- **MinIO object storage / file uploads** — headshots are `headshotUrl` strings; no upload flow is described (spec `## Open questions`). Settings surfaces MinIO keys but no upload behavior is asserted.
-- **Actual email deliverability / inbox receipt** — tests assert send-or-enqueue and outbox drain, not real SMTP delivery to a mailbox.
-- **Cal.com live booking completion** — tests assert the embed renders with the resolved link and degrades gracefully when unconfigured (503); booking a real slot on Cal.com's side is not exercised.
-- **Reconciliation of `admin_only` (spec) vs `full_auth` (tasks.md) auth models** — both surfaces are specified here; the final shipped model determines which auth cases run. Not resolved by this document.
-- **Exact marketing copy / testimonial / logo content** — placeholder content correctness (final prose) is a launch-readiness manual check, not an automated assertion beyond word-count (≥1500) and FAQ-count (≥15).
-```
+- **Full-auth user flows** (`POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/logout`, `/login`, `/signup`, first-user-becomes-ADMIN) — present in `tasks.md` (full_auth) but the spec resolves the product to **admin_only**. Not tested here pending resolution of the open question; if full_auth is confirmed for Phase 1, add signup/login/logout API + journey cases.
+- **Password-reset completion** — lockout queues a reset email, but no reset-completion page/endpoint ships in Phase 1 (spec-silent); only the enqueue is asserted.
+- **MinIO upload/storage flow** — provisioned and surfaced in settings only; no upload feature exists in Phase 1 (images are URL strings), so no upload tests.
+- **LLM runtime integration** — `llm` appears in settings for credential entry only; the spec describes no LLM-backed feature, so no functional LLM tests.
+- **SSR / server-rendered SEO** — SEO is client-injected JSON-LD by design; non-JS AI-crawler indexing quality is an accepted trade-off, not a test target.
+- **Lighthouse CI thresholds** (LCP<2500ms, CLS<0.1, TBT/INP proxy) — measured by the separate Lighthouse CI tooling, not by functional Playwright/Jest cases; referenced here only via the responsive/CLS journey.
+- **`surface.json` reconciliation** — endpoint counts are derived because the machine-readable surface file is missing; treat totals as approximate until it is generated.
+
+Wrote .pipeline/test_spec.md (96 cases across 23 endpoints / 11 journeys).
