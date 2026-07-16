@@ -1,0 +1,55 @@
+[
+  {
+    "id": "a1-1",
+    "category": "test_missing",
+    "file": "package.json",
+    "description": "No automated test suite exists despite the plan mandating Vitest unit tests, Playwright E2E tests, and Lighthouse CI.",
+    "check": {
+      "kind": "grep",
+      "file": "package.json",
+      "pattern": "\"vitest\"|\"playwright\"|\"@lhci/cli\"",
+      "expect": "present"
+    },
+    "status": "open",
+    "raised_attempt": 1,
+    "times_raised": 1,
+    "fixed_by_commit": "6af74921495ef63c5edbe740297be3a3276a76ca",
+    "patched_attempt": 1,
+    "reopen_reason": "deterministic check failed after patch"
+  },
+  {
+    "id": "a1-2",
+    "category": "missing_feature",
+    "file": "src/app/(site)/team/[slug]/page.tsx",
+    "description": "next/image is never used anywhere in the codebase; all images (team headshots, logo, trust-bar logos) render as plain text instead of optimized images.",
+    "check": {
+      "kind": "grep",
+      "file": "src/app/(site)/team/[slug]/page.tsx",
+      "pattern": "next/image",
+      "expect": "present"
+    },
+    "status": "fixed",
+    "raised_attempt": 1,
+    "times_raised": 1,
+    "fixed_by_commit": "6af74921495ef63c5edbe740297be3a3276a76ca",
+    "patched_attempt": 1
+  },
+  {
+    "id": "a1-3",
+    "category": "missing_feature",
+    "file": "package.json",
+    "description": "No .eslintrc config or eslint dependency exists, though Step 1 of the plan explicitly lists .eslintrc as a required scaffold file.",
+    "check": {
+      "kind": "grep",
+      "file": "package.json",
+      "pattern": "\"eslint\"",
+      "expect": "present"
+    },
+    "status": "open",
+    "raised_attempt": 1,
+    "times_raised": 1,
+    "fixed_by_commit": "6af74921495ef63c5edbe740297be3a3276a76ca",
+    "patched_attempt": 1,
+    "reopen_reason": "deterministic check failed after patch"
+  }
+]
