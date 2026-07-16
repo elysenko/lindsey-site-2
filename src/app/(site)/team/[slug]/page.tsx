@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { getTeamMember } from '@/lib/content';
 import Breadcrumbs from '@/components/Breadcrumbs';
@@ -50,6 +51,15 @@ export default async function TeamMemberPage({ params }: { params: { slug: strin
       <div className="mt-8 grid gap-12 lg:grid-cols-[1fr_1.8fr]">
         <aside>
           <div className="rounded-xl border border-ink/10 bg-white p-7">
+            <div className="relative mb-6 aspect-square w-full overflow-hidden rounded-lg bg-parchment-deep">
+              <Image
+                src={member.headshotUrl || '/avatar-placeholder.svg'}
+                alt={`Portrait of ${member.fullName}`}
+                fill
+                sizes="(max-width: 1024px) 100vw, 33vw"
+                className="object-cover"
+              />
+            </div>
             <h1 className="text-2xl font-semibold">{displayName}</h1>
             {member.credentials && (
               <p className="mt-1 text-sm text-ink-muted">{member.credentials}</p>

@@ -31,11 +31,17 @@ export const TESTIMONIALS: Testimonial[] = [
   },
 ];
 
-export const TRUST_LOGOS: string[] = [
-  'Northwind Capital',
-  'Halden Health',
-  'Verdant Robotics',
-  'Aperture Labs',
-  'Callister & Roe',
-  'Meridian Institute',
+export interface TrustLogo {
+  name: string;
+  /** Path to a static SVG wordmark asset under /public, rendered via next/image. */
+  src: string;
+}
+
+export const TRUST_LOGOS: TrustLogo[] = [
+  { name: 'Northwind Capital', src: '/logos/northwind-capital.svg' },
+  { name: 'Halden Health', src: '/logos/halden-health.svg' },
+  { name: 'Verdant Robotics', src: '/logos/verdant-robotics.svg' },
+  { name: 'Aperture Labs', src: '/logos/aperture-labs.svg' },
+  { name: 'Callister & Roe', src: '/logos/callister-roe.svg' },
+  { name: 'Meridian Institute', src: '/logos/meridian-institute.svg' },
 ];

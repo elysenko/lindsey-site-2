@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" role="img" aria-label="Team member portrait placeholder">
+  <rect width="400" height="400" fill="#efe9df"/>
+  <circle cx="200" cy="160" r="70" fill="#c9bfae"/>
+  <path d="M80 360c0-66 54-120 120-120s120 54 120 120z" fill="#c9bfae"/>
+  <text x="200" y="392" text-anchor="middle" font-family="Georgia, serif" font-size="16" fill="#8a8172">LeBarre Group</text>
+</svg>

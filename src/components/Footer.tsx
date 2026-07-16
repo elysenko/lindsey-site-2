@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { SITE, FOOTER_LINKS } from '@/content/site';
 
 // Global footer. Server component.
@@ -8,7 +9,13 @@ export default function Footer() {
     <footer className="mt-24 bg-ink text-parchment">
       <div className="container-page grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <div className="font-serif text-lg font-semibold">{SITE.name}</div>
+          <Image
+            src="/logo-light.svg"
+            alt={SITE.name}
+            width={160}
+            height={40}
+            className="h-9 w-auto"
+          />
           <p className="mt-3 max-w-xs text-sm text-parchment/70">{SITE.tagline}.</p>
           <a
             href={`mailto:${SITE.email}`}

@@ -1,16 +1,20 @@
+import Image from 'next/image';
 import { TRUST_LOGOS } from '@/content/testimonials';
 
-// Wordmark-style trust row (placeholder client names). Server component.
+// Trust row rendered from static SVG wordmark assets via next/image.
+// Explicit width/height reserve layout space so the row contributes no CLS.
 export default function TrustLogos() {
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-      {TRUST_LOGOS.map((name) => (
-        <span
-          key={name}
-          className="font-serif text-lg font-medium tracking-tight text-ink-muted/70"
-        >
-          {name}
-        </span>
+    <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6">
+      {TRUST_LOGOS.map((logo) => (
+        <Image
+          key={logo.src}
+          src={logo.src}
+          alt={logo.name}
+          width={200}
+          height={40}
+          className="h-8 w-auto opacity-70 transition-opacity hover:opacity-100"
+        />
       ))}
     </div>
   );

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import Image from 'next/image';
 import { listTeamMembers } from '@/lib/content';
 import { SITE } from '@/content/site';
 import Breadcrumbs from '@/components/Breadcrumbs';
@@ -69,6 +70,15 @@ export default async function AboutPage() {
                 href={`/team/${m.slug}`}
                 className="group rounded-xl border border-ink/10 bg-white p-6 transition-shadow hover:shadow-lg"
               >
+                <div className="relative mb-4 aspect-[4/3] w-full overflow-hidden rounded-lg bg-parchment-deep">
+                  <Image
+                    src={m.headshotUrl || '/avatar-placeholder.svg'}
+                    alt={`Portrait of ${m.fullName}`}
+                    fill
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    className="object-cover"
+                  />
+                </div>
                 <h3 className="text-lg font-semibold text-ink">
                   {m.honorificPrefix ? `${m.honorificPrefix} ` : ''}
                   {m.fullName}
