@@ -31,14 +31,20 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Prisma: schema + migrations + CLI + engines so `migrate deploy` runs at boot
+# Prisma: schema + migrations + CLI + engines so `migrate deploy` runs at boot.
+# `.prisma`/`@prisma/client` + bcryptjs are also what `prisma/seed.js` needs — the
+# standalone trace bundles bcryptjs into the app chunks but NOT into node_modules,
+# so it must be copied explicitly for the seed to resolve it.
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
 EXPOSE 3000
-# Run pending migrations, then start the standalone server. A failed migration
-# exits non-zero and K8s will not route traffic to the pod.
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node server.js"]
+# Run pending migrations (fatal on failure — K8s won't route to a bad schema),
+# then seed idempotently (non-fatal: seed emits SEED_CRED and ensures the admin
+# user exists, but a transient seed error must not block serving), then start the
+# standalone server.
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && (node prisma/seed.js || echo '[boot] seed skipped (non-fatal)') && node server.js"]

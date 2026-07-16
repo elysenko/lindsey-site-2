@@ -1,13 +1,13 @@
-import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
-
-const db = new PrismaClient();
-
-// Idempotent seed:
-//   1. Bootstrap ADMIN user (password re-asserted on every run).
+// Production-runnable seed (plain CommonJS — the runner image has no tsx/ts-node).
+// Idempotent:
+//   1. Bootstrap ADMIN user (password re-asserted on every run, no lockout flags).
 //   2. Team members (upserted by slug) — power /about and /team/[slug].
 //   3. One published Insights post — powers /insights and /insights/[slug].
-// Safe to run repeatedly.
+// Emits `SEED_CRED ADMIN <email> <password>` so the post-deploy agent captures creds.
+const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcryptjs');
+
+const db = new PrismaClient();
 
 const TEAM = [
   {
@@ -47,7 +47,7 @@ const TEAM = [
   },
 ];
 
-function paragraphs(n: number): string {
+function paragraphs(n) {
   const base =
     'Positioning is the discipline of choosing what to be famous for, and then having the courage to say no to everything else. In practice, most organizations struggle less with creativity than with subtraction. They can generate a dozen things to say about themselves; what they cannot do is decide which one truth, defended relentlessly, will make them the obvious choice. This is the work. It is quieter than a rebrand and more consequential than a campaign, because it determines the ground on which every future message will stand.';
   return Array.from({ length: n }, () => base).join('\n\n');
@@ -68,11 +68,7 @@ async function main() {
   console.log(`SEED_CRED ADMIN ${admin.email} ${password}`);
 
   for (const m of TEAM) {
-    await db.teamMember.upsert({
-      where: { slug: m.slug },
-      update: { ...m },
-      create: { ...m },
-    });
+    await db.teamMember.upsert({ where: { slug: m.slug }, update: { ...m }, create: { ...m } });
   }
   console.log(`[seed] ${TEAM.length} team members ready`);
 
