@@ -1,0 +1,26 @@
+# deploy/values-minio.yaml
+# Bitnami MinIO chart — single-node S3-compatible object storage.
+# NOTE: For this run, MinIO is already provisioned and Running in namespace
+# "colossus-apps" (endpoint: http://minio.colossus-apps.svc.cluster.local:9000).
+# These values document that provisioned instance; deploy only if re-provisioning.
+#   helm upgrade --install minio bitnami/minio \
+#     -f deploy/values-minio.yaml -n <namespace>
+
+mode: standalone
+
+auth:
+  rootUser: "admin"
+  rootPassword: "cQjAYZd5DIWH0DDi4kfpygvn"
+
+defaultBuckets: "app-uploads"
+
+persistence:
+  size: 5Gi
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

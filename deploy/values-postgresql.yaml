@@ -1,0 +1,24 @@
+# deploy/values-postgresql.yaml
+# Bitnami PostgreSQL Helm chart values.
+# NOTE: For this run, PostgreSQL is already provisioned and Running as release
+# "postgres" in namespace "colossus-apps"
+# (host: postgres-postgresql.colossus-apps.svc.cluster.local, db: app).
+# These values document that provisioned instance; deploy only if re-provisioning.
+#   helm upgrade --install postgres bitnami/postgresql \
+#     -f deploy/values-postgresql.yaml -n <namespace>
+
+auth:
+  postgresPassword: "AxLHtCYEfBhMGmIFy5JzVQEy"
+  database: app
+
+primary:
+  persistence:
+    size: 5Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
