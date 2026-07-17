@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lindsey-site-2-staging
+  namespace: colossus-apps-staging
+  labels:
+    app: lindsey-site-2-staging
+    managed-by: colossus
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: lindsey-site-2-staging
+  template:
+    metadata:
+      labels:
+        app: lindsey-site-2-staging
+    spec:
+      hostAliases:
+        - ip: "192.168.50.250"
+          hostnames:
+            - "ubuntu.desmana-truck.ts.net"
+      containers:
+        - name: app
+          image: ubuntu:30500/lindsey-site-2-staging:latest
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: app-secrets
+                optional: true

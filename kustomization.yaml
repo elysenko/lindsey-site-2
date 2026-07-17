@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: colossus-apps-staging
+resources:
+  - k8s/deployment.yaml
+  - k8s/service.yaml
+  - k8s/ingress.yaml
+images:
+  - name: ubuntu:30500/lindsey-site-2-staging
+    digest: sha256:bf5cc0309050e70b3c65ce72aa482e9621aa5810a8cfe9ce0c3105b9186fe59a
+# Redeploy:  kubectl apply -k . (re-applies this exact image)

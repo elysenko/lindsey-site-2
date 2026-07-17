@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: lindsey-site-2-staging
+  namespace: colossus-apps-staging
+  labels:
+    app: lindsey-site-2-staging
+    managed-by: colossus
+spec:
+  type: ClusterIP
+  selector:
+    app: lindsey-site-2-staging
+  ports:
+    - port: 80
+      targetPort: 80
