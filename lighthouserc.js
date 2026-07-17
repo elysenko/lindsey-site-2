@@ -22,15 +22,21 @@ const settings =
         screenEmulation: { mobile: false, disabled: false },
       };
 
+// The frontend is an Angular 19 SPA. Build it with `ng build` and serve the
+// static browser bundle (dist/frontend/browser) exactly as nginx does in prod
+// (SPA fallback → index.html), then run Lighthouse against the served pages.
+//   cd web && npx ng build --configuration production
+//   npx http-server web/dist/frontend/browser -p 8080 --proxy http://localhost:8080?
 module.exports = {
   ci: {
     collect: {
-      startServerCommand: 'npm run start',
-      startServerReadyPattern: 'ready|started|Local:',
+      startServerCommand:
+        'npx http-server web/dist/frontend/browser -p 8080 -a 127.0.0.1 --proxy "http://127.0.0.1:8080?" --silent',
+      startServerReadyPattern: 'Available on|Hit CTRL-C',
       url: [
-        'http://localhost:3000/',
-        'http://localhost:3000/services/brand-strategy-positioning',
-        'http://localhost:3000/insights',
+        'http://127.0.0.1:8080/',
+        'http://127.0.0.1:8080/services/brand-strategy-positioning',
+        'http://127.0.0.1:8080/insights',
       ],
       numberOfRuns: 3,
       settings,
