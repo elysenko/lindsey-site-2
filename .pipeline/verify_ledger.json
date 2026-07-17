@@ -1,55 +1,89 @@
 [
   {
     "id": "a1-1",
-    "category": "test_missing",
+    "category": "wrong_file",
     "file": "package.json",
-    "description": "No automated test suite exists despite the plan mandating Vitest unit tests, Playwright E2E tests, and Lighthouse CI.",
+    "description": "The Next.js reference scaffold at the repo root was never deleted after porting, contradicting the plan's explicit removal requirement.",
     "check": {
       "kind": "grep",
       "file": "package.json",
-      "pattern": "\"vitest\"|\"playwright\"|\"@lhci/cli\"",
-      "expect": "present"
+      "pattern": "\"next\":",
+      "expect": "absent"
     },
     "status": "open",
     "raised_attempt": 1,
     "times_raised": 1,
-    "fixed_by_commit": "6af74921495ef63c5edbe740297be3a3276a76ca",
+    "fixed_by_commit": "6a838833e4d72baeb8c28dc4d74c21c7d08fa1a1",
     "patched_attempt": 1,
     "reopen_reason": "deterministic check failed after patch"
   },
   {
     "id": "a1-2",
-    "category": "missing_feature",
-    "file": "src/app/(site)/team/[slug]/page.tsx",
-    "description": "next/image is never used anywhere in the codebase; all images (team headshots, logo, trust-bar logos) render as plain text instead of optimized images.",
+    "category": "test_missing",
+    "file": "tests/unit/sanitize.test.ts",
+    "description": "Automated tests still target the discarded Next.js reference app via @/lib/* imports instead of the shipped NestJS backend, so the plan's mandated backend unit-test coverage does not actually exist.",
     "check": {
       "kind": "grep",
-      "file": "src/app/(site)/team/[slug]/page.tsx",
-      "pattern": "next/image",
+      "file": "tests/unit/sanitize.test.ts",
+      "pattern": "@/lib/sanitize",
+      "expect": "absent"
+    },
+    "status": "open",
+    "raised_attempt": 1,
+    "times_raised": 1,
+    "fixed_by_commit": "6a838833e4d72baeb8c28dc4d74c21c7d08fa1a1",
+    "patched_attempt": 1,
+    "reopen_reason": "deterministic check failed after patch"
+  },
+  {
+    "id": "a1-3",
+    "category": "test_missing",
+    "file": "lighthouserc.js",
+    "description": "Lighthouse CI config starts the old Next.js server (npm run start on port 3000) rather than the Angular/nginx build, so Core Web Vitals budgets are never actually checked against the shipped app.",
+    "check": {
+      "kind": "grep",
+      "file": "lighthouserc.js",
+      "pattern": "next",
+      "expect": "absent"
+    },
+    "status": "fixed",
+    "raised_attempt": 1,
+    "times_raised": 1,
+    "fixed_by_commit": "6a838833e4d72baeb8c28dc4d74c21c7d08fa1a1",
+    "patched_attempt": 1
+  },
+  {
+    "id": "a1-4",
+    "category": "missing_feature",
+    "file": "ARCHITECTURE.md",
+    "description": "ARCHITECTURE.md was not updated to supersede the stale Next.js discovery note as the plan explicitly required.",
+    "check": {
+      "kind": "grep",
+      "file": "ARCHITECTURE.md",
+      "pattern": "Next.js 14",
+      "expect": "absent"
+    },
+    "status": "fixed",
+    "raised_attempt": 1,
+    "times_raised": 1,
+    "fixed_by_commit": "6a838833e4d72baeb8c28dc4d74c21c7d08fa1a1",
+    "patched_attempt": 1
+  },
+  {
+    "id": "a1-5",
+    "category": "edge_case",
+    "file": "backend/src/prisma/prisma.service.ts",
+    "description": "PrismaService.onModuleInit awaits $connect() with no error handling, so a database outage at process boot crashes the whole NestJS app instead of letting it start and report unhealthy via /api/health/deep.",
+    "check": {
+      "kind": "grep",
+      "file": "backend/src/prisma/prisma.service.ts",
+      "pattern": "catch",
       "expect": "present"
     },
     "status": "fixed",
     "raised_attempt": 1,
     "times_raised": 1,
-    "fixed_by_commit": "6af74921495ef63c5edbe740297be3a3276a76ca",
+    "fixed_by_commit": "6a838833e4d72baeb8c28dc4d74c21c7d08fa1a1",
     "patched_attempt": 1
-  },
-  {
-    "id": "a1-3",
-    "category": "missing_feature",
-    "file": "package.json",
-    "description": "No .eslintrc config or eslint dependency exists, though Step 1 of the plan explicitly lists .eslintrc as a required scaffold file.",
-    "check": {
-      "kind": "grep",
-      "file": "package.json",
-      "pattern": "\"eslint\"",
-      "expect": "present"
-    },
-    "status": "open",
-    "raised_attempt": 1,
-    "times_raised": 1,
-    "fixed_by_commit": "6af74921495ef63c5edbe740297be3a3276a76ca",
-    "patched_attempt": 1,
-    "reopen_reason": "deterministic check failed after patch"
   }
 ]
