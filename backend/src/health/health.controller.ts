@@ -17,13 +17,17 @@ export class HealthController {
     private readonly prisma: PrismaService,
   ) {}
 
+  /**
+   * Liveness probe at `/api/health`: DB-independent. Reports the process is
+   * alive and responds quickly even when the database is unreachable, so a
+   * transient DB outage never triggers a pod restart.
+   */
   @Get()
-  @HealthCheck()
-  check(): Promise<HealthCheckResult> {
-    return this.health.check([() => this.pingDatabase()]);
+  check(): { status: string; info: Record<string, { status: string }> } {
+    return { status: 'ok', info: { process: { status: 'up' } } };
   }
 
-  /** Deep probe: same DB ping, exposed at `/api/health/deep`. */
+  /** Readiness probe at `/api/health/deep`: DB-dependent (pings PostgreSQL). */
   @Get('deep')
   @HealthCheck()
   deep(): Promise<HealthCheckResult> {
