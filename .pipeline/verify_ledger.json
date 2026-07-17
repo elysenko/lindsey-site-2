@@ -13,8 +13,8 @@
     "status": "open",
     "raised_attempt": 1,
     "times_raised": 1,
-    "fixed_by_commit": "6a838833e4d72baeb8c28dc4d74c21c7d08fa1a1",
-    "patched_attempt": 1,
+    "fixed_by_commit": "866be9ebfc7c4f6eae34792cf9b0ff911a9f64a7",
+    "patched_attempt": 2,
     "reopen_reason": "deterministic check failed after patch"
   },
   {
@@ -31,8 +31,8 @@
     "status": "open",
     "raised_attempt": 1,
     "times_raised": 1,
-    "fixed_by_commit": "6a838833e4d72baeb8c28dc4d74c21c7d08fa1a1",
-    "patched_attempt": 1,
+    "fixed_by_commit": "866be9ebfc7c4f6eae34792cf9b0ff911a9f64a7",
+    "patched_attempt": 2,
     "reopen_reason": "deterministic check failed after patch"
   },
   {
@@ -85,5 +85,41 @@
     "times_raised": 1,
     "fixed_by_commit": "6a838833e4d72baeb8c28dc4d74c21c7d08fa1a1",
     "patched_attempt": 1
+  },
+  {
+    "id": "a2-1",
+    "category": "wrong_file",
+    "file": "package.json",
+    "description": "The Next.js reference scaffold at the repo root was never deleted after porting despite the plan's explicit removal requirement and a commit message claiming it was done.",
+    "check": {
+      "kind": "grep",
+      "file": "package.json",
+      "pattern": "\"next\":",
+      "expect": "absent"
+    },
+    "status": "open",
+    "raised_attempt": 2,
+    "times_raised": 1,
+    "fixed_by_commit": "866be9ebfc7c4f6eae34792cf9b0ff911a9f64a7",
+    "patched_attempt": 2,
+    "reopen_reason": "deterministic check failed after patch"
+  },
+  {
+    "id": "a2-2",
+    "category": "test_missing",
+    "file": "tests/unit/sanitize.test.ts",
+    "description": "Automated tests still target the discarded Next.js reference app via @/lib/* imports instead of the shipped NestJS backend, so the plan's mandated backend unit-test coverage does not actually replace the stale suite.",
+    "check": {
+      "kind": "grep",
+      "file": "tests/unit/sanitize.test.ts",
+      "pattern": "@/lib/sanitize",
+      "expect": "absent"
+    },
+    "status": "open",
+    "raised_attempt": 2,
+    "times_raised": 1,
+    "fixed_by_commit": "866be9ebfc7c4f6eae34792cf9b0ff911a9f64a7",
+    "patched_attempt": 2,
+    "reopen_reason": "deterministic check failed after patch"
   }
 ]
