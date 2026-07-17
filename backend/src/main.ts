@@ -14,11 +14,10 @@ async function bootstrap(): Promise<void> {
   });
 
   // All controller routes live under `/api` (nginx proxies `/api/` → backend),
-  // except `health` (root-path probe) and the crawler documents `sitemap.xml`
-  // and `robots.txt`, which must resolve at the site root.
+  // including the health probes (`/api/health`, `/api/health/deep`). Only the
+  // crawler documents `sitemap.xml` and `robots.txt` resolve at the site root.
   app.setGlobalPrefix('api', {
     exclude: [
-      { path: 'health', method: RequestMethod.ALL },
       { path: 'sitemap.xml', method: RequestMethod.GET },
       { path: 'robots.txt', method: RequestMethod.GET },
     ],

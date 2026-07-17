@@ -23,6 +23,13 @@ export class HealthController {
     return this.health.check([() => this.pingDatabase()]);
   }
 
+  /** Deep probe: same DB ping, exposed at `/api/health/deep`. */
+  @Get('deep')
+  @HealthCheck()
+  deep(): Promise<HealthCheckResult> {
+    return this.health.check([() => this.pingDatabase()]);
+  }
+
   /** Verifies the live PostgreSQL connection with a trivial query. */
   private async pingDatabase(): Promise<HealthIndicatorResult> {
     try {
