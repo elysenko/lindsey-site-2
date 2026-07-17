@@ -14,4 +14,8 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 COPY package*.json ./
 EXPOSE 3000
-CMD ["node", "dist/main"]
+# Boot: apply pending migrations (fatal — K8s must not route to a bad schema),
+# seed idempotently (non-fatal — emits SEED_CRED and ensures the admin user),
+# then start the API. The deploy harness may also run migrate/seed as separate
+# steps; both are idempotent so running here as well is safe.
+CMD ["sh", "-c", "npx prisma migrate deploy && (node prisma/seed/seed.js || echo '[boot] seed skipped (non-fatal)') && node dist/main"]

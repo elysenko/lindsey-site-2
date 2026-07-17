@@ -1,8 +1,11 @@
 import 'reflect-metadata';
 import { NestFactory, NestApplication } from '@nestjs/core';
-import { Logger } from '@nestjs/common';
+import { Logger, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { SanitizePipe } from './common/sanitize.pipe';
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
@@ -10,6 +13,32 @@ async function bootstrap(): Promise<void> {
     logger: ['log', 'error', 'warn', 'debug', 'verbose'],
   });
 
+  // All controller routes live under `/api` (nginx proxies `/api/` → backend),
+  // except `health` (root-path probe) and the crawler documents `sitemap.xml`
+  // and `robots.txt`, which must resolve at the site root.
+  app.setGlobalPrefix('api', {
+    exclude: [
+      { path: 'health', method: RequestMethod.ALL },
+      { path: 'sitemap.xml', method: RequestMethod.GET },
+      { path: 'robots.txt', method: RequestMethod.GET },
+    ],
+  });
+
+  app.use(cookieParser());
+  app.use(helmet({ contentSecurityPolicy: false }));
+
+  // Validate + coerce DTOs, then strip HTML from all persisted free-text.
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: false,
+    }),
+    new SanitizePipe(),
+  );
+
+  // Same-origin in production (nginx serves SPA + proxies `/api`); permissive
+  // origin with credentials only matters for the local ng-serve dev proxy.
   const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:4200';
   app.enableCors({
     origin: frontendUrl,
@@ -19,8 +48,8 @@ async function bootstrap(): Promise<void> {
   });
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Template Enterprise API')
-    .setDescription('NestJS + tRPC backend API')
+    .setTitle('LeBarre Group API')
+    .setDescription('NestJS REST API for the LeBarre Group marketing site + CRM')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
@@ -32,7 +61,6 @@ async function bootstrap(): Promise<void> {
   await app.listen(port);
   logger.log(`Application running on http://localhost:${port}`);
   logger.log(`Swagger docs at http://localhost:${port}/api/docs`);
-  logger.log(`tRPC endpoint at http://localhost:${port}/trpc`);
 }
 
 bootstrap();

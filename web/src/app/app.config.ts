@@ -1,38 +1,23 @@
-import { ApplicationConfig, InjectionToken } from '@angular/core';
-import { provideRouter } from '@angular/router';
-import { provideHttpClient } from '@angular/common/http';
+import { ApplicationConfig } from '@angular/core';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
-import { createTRPCClient, httpBatchLink } from '@trpc/client';
-import type { AppRouter } from '../../../backend/src/trpc/trpc.router';
 import { routes } from './app.routes';
+import { credentialsInterceptor } from './core/credentials.interceptor';
 
 /**
- * Typed tRPC client injection token.
+ * Root application config.
  *
- * We use the InjectionToken pattern rather than ngx-trpc's provider helper
- * because it gives us full type safety through the AppRouter type without
- * coupling to ngx-trpc's internal API.  The `AppRouter` import is type-only
- * so no backend code is ever bundled into the frontend.
+ * The frontend talks to the NestJS REST API under `/api` (same origin, proxied
+ * by nginx in production). The credentials interceptor attaches the httpOnly
+ * admin session cookie so guarded admin routes authenticate transparently.
+ * `withComponentInputBinding` lets route params (`:slug`, `:token`, `?page=`)
+ * bind straight to component inputs for the deep-linkable states in the plan.
  */
-export const TRPC_CLIENT = new InjectionToken<
-  ReturnType<typeof createTRPCClient<AppRouter>>
->('TRPC_CLIENT');
-
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideRouter(routes),
-    provideHttpClient(),
+    provideRouter(routes, withComponentInputBinding()),
+    provideHttpClient(withInterceptors([credentialsInterceptor])),
     provideAnimations(),
-    {
-      provide: TRPC_CLIENT,
-      useFactory: () =>
-        createTRPCClient<AppRouter>({
-          links: [
-            httpBatchLink({
-              url: '/trpc',
-            }),
-          ],
-        }),
-    },
   ],
 };

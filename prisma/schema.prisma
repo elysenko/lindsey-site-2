@@ -1,13 +1,10 @@
 // LeBarre Group — marketing site + lead funnel + admin CRM/CMS
-// Prisma schema. Datasource: PostgreSQL. Auth model: full_auth (ADMIN + USER).
+// Prisma schema. Datasource: PostgreSQL.
+// Auth model: admin_only — admin login only; User.role (ADMIN default, USER retained
+// for future use) drives the AdminGuard. NestJS REST backend (no Pothos/tRPC).
 
 generator client {
   provider = "prisma-client-js"
-}
-
-// Type-safe GraphQL/schema builder types (consumed by backend_agent)
-generator pothos {
-  provider = "prisma-pothos-types"
 }
 
 datasource db {
